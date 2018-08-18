@@ -83,7 +83,7 @@ rm -rf $INSTALL_LOCATION/openssl/share/doc
 
 # generate metadata
 cd $INSTALL_LOCATION
-DESTINATION="${DIST_BUCKET}/${RUNTIME_NAME}_`date +%Y-%m-%d_%H%M`.zip"
+DESTINATION="${DIST_BUCKET}/${RUNTIME_NAME}.zip"
 printf "ruby: ${RUBY_VERSION}\npath:${RUBY_LOCATION}/bin\ngems:${RUBY_GEMS}\nsource:${DESTINATION}" > ruby_meta.yaml
 printf "openssl: ${OPENSSL_LOCATION}" >> ruby_meta.yaml
 # create and upload package
@@ -91,5 +91,7 @@ cd $INSTALL_LOCATION && zip -r --symlinks -0 /tmp/$RUNTIME_NAME.zip . && \
 aws s3 cp /tmp/$RUNTIME_NAME.zip $DESTINATION
 
 echo "rubydestination: $DESTINATION"
+echo "rubycompilecomplete"
 # shut down ec2 instance
+# allow python to pick up last line
 halt

@@ -9,13 +9,18 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 class RubyRuntimeBinaryGenerator:
+
     AMI_ID = 'ami-4fffc834'
     INSTANCE_TYPE = 't2.large'
+
+    ## TODO: rewrite everythin in troposhpere, and just
+    ## rely on user data doing it's job
+
     def __init__(self):
         self.key_name = None
         self.role_name = None
         self.subnet_ids = []
-        f = open(os.path.dirname(os.path.abspath(__file__)) + '/../resources/compile.sh','r')
+        f = open(os.path.dirname(os.path.abspath(__file__)) + '/resources/compile.sh','r')
         self.user_data = f.read()
         f.close()
         self.vpc_id = None
@@ -168,35 +173,34 @@ class RubyRuntimeBinaryGenerator:
         while True:
             try:
                 completed = subprocess.run(f"ssh -i {self.key_name} ec2-user@{self.instance['PublicIpAddress']}" +
-                                " 'tail -n 20 /var/log/cloud-init-output.log'",
+                                " 'tail -n 1000 /var/log/cloud-init-output.log'",
                                 timeout=60,
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE,
                                 shell=True)
-                output = completed.stdout
+                output = completed.stdout.decode('utf-8')
                 lines = output.splitlines()
                 if len(lines) > 0:
                     last_line = lines[len(lines)-1]
-                    print(f"Last line from compile output:\n {last_line.decode('utf-8')}")
-                if 'rubydestination' in output.decode('utf-8'):
-                    for line in lines:
-                        print(f"Checking {line}")
-                        if 'rubydestination' in line.decode('utf-8'):
-                            print('Found ruby destination')
-                            print(line)
-                    break
+                    print(f"Last line from compile output:\n {last_line}")
+                    if 'Cloud-init v. 0.7.6 finished at' in last_line:
+                        for line in lines:
+                            if 'rubydestination' in line:
+                                print('Found ruby destination')
+                                print(line)
+                        break
                 time_taken += 10
-                print(f"Waiting 10 seconds more... Time taken: {int(time_taken // 60}m{time_taken % 60}s")
+                print(f"Waiting 10 seconds more... Time taken: {int(time_taken // 60)}m{time_taken % 60}s")
                 time.sleep(10)
                 if time_taken > time_to_build_max:
-                    raise "Compiling taking more than 15 minutes, please restart..."
+                    raise RuntimeError("Compiling taking more than 15 minutes, please restart...")
             except Exception as e:
                 logger.exception('Exception tailing log')
 
     def stop_instance(self):
         print("Assuming compile process completed, waiting for ec2 to be in terminated state....")
         i = 0
-
+        client = boto3.client('ec2', region_name='us-east-1')
         while True:
             self.instance = client.describe_instances(InstanceIds=[self.instance['InstanceId']])['Reservations'][0]['Instances'][0]
             if self.instance['State'] == 'terminated':
@@ -242,9 +246,12 @@ class RubyRuntimeBinaryGenerator:
             client = boto3.client('iam', region_name='us-east-1')
             client.detach_role_policy(PolicyArn='arn:aws:iam::aws:policy/AmazonS3FullAccess',
                                       RoleName=self.role_name)
+            client.remove_role_from_instance_profile(InstanceProfileName=self.role_name,
+                                                     RoleName=self.role_name)
+
+            client.delete_instance_profile(InstanceProfileName='lambdaruntimegenerator1532004115')
             client.delete_role(RoleName=self.role_name)
 
 
-self = RubyRuntimeBinaryGenerator()
-self.generate_binaries()
+
 

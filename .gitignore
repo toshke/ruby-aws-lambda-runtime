@@ -1,2 +1,5 @@
 # Created by .ignore support plugin (hsz.mobi)
 lambdaruntimegenerator*
+dist
+build
+ruby_aws_lambda_runtime.egg-info

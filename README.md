@@ -1,7 +1,8 @@
 ## Intro
 
 You can use this repository to generate ruby runtime binaries
-in order to run Ruby serverless, on AWS Lambda.
+in order to run Ruby on AWS Lambda FaaS. Alternatively, you 
+can use precompiled binaries attache to releases page on Github.
 
 ## Why
 
@@ -29,6 +30,27 @@ This solution builds ruby runtime binaries on same AMI
 that runs AWS lambda, making it much more compatible with 
 Lambda environment. As travelling ruby [README](https://github.com/phusion/traveling-ruby) states
 
+> Native extensions:
+>
+> Traveling Ruby only supports native extensions when creating Linux and OS X packages. 
+> Native extensions are currently not supported when creating Windows packages.
+> Traveling Ruby only supports a number of popular native extension gems, and only in some specific versions.
+> You cannot use just any native extension gem. Native extensions are covered in tutorial 3.
+
+2. Packaging
+
+This package is designed to download ruby binaries from pre-defined
+location at runtime, rather than bloating Lambda package with ruby binaries.
+
+3. *OpenSSL* problems are 2nd reason I did not go with 
+existing solutions - as `openssl` version in current
+lambda environment is 1.0.1 - [php-serverless](https://github.com/ZeroSharp/serverless-php/issues/8)
+has similar issues. I got this error when trying to download 
+git repository over https within ruby code running on lambda. 
+This repository/package resolves this by compiling OpenSSL 1.1.0
+altogether with Ruby (that is - compiling Ruby against compiled OpenSSL
+on same AMI). This results in large package unfortunately. 
+
 > 
 > Native extensions:
 >
@@ -36,39 +58,71 @@ Lambda environment. As travelling ruby [README](https://github.com/phusion/trave
 > Traveling Ruby only supports a number of popular native extension gems, and only in some specific versions. You cannot use just any native extension gem.
 > Native extensions are covered in tutorial 3.
 
+## Performance impact and memory considerations
+
+Starting the lambda cold will take less than 10 seconds to download and unpack
+binaries from S3 bucket with 512MB of memory allocated for runtime
+This changes up to 30 seconds with 128MB of lambda memory.
+
+Simple printing ruby version, using `ruby -v`, once Lambda is warmed up takes
+less than 50ms on average with 512MB memory configured. 
+
+Consider running with at least 512MB lambda runtime memory allowed. 
+
 ## Demo
 
 TBD
 
 ## Usage
+
+### 1 - Prepare binaries in your local account
  
-You can use `ruby-aws-lambda-runtime` python 
-package to quickly get started. To deploy prebuilt
-lambda binaries
+To prepare for library for consumption on Lambda, ruby binaries
+need be deployed to S3. You can either compile your own,
+or use prebuilt binaries.
+
+#### To use prebuilt libraries
 
 ```
-pip install 
-ruby-aws-lambda-runtime init-default
+pip install ruby-aws-lambda-runtime
+ruby-aws-lambda-runtime upload-precompiled-binaries
 ```
 
-By default, python 
-python library will use prepackaged ruby binaries
-available as download packages on [releases page]
-(enter url here). They get deployed to your S3 bucket, 
-and downloaded at lambda runtime
+#### To compile your own
 
 ```
-
+pip install ruby-aws-lambda-runtime
+ruby-aws-lambda-runtime generate-binaries
 ```
 
-### To compile binaries
+### Consume
+
+To consume ruby libraries, deploy this package to AWS Lambda
+configured with Ptyhon3.6 runtime, and consume as follows
+
+```
+from ruby_lambda_runtime.ruby_runtime import RubyLambdaRuntime
+
+def lambda_handler(event, context):
+    runtime = RubyLambdaRuntime()
+    # execute ruby binary
+    runtime.execute('ruby --version')
+    runtime.execute('ruby -e 'puts "heelo world!!"')
+    
+    # package ruby 
+    runtime.execute('ruby my_packaged_ruby_script.rb')
+    
+    # 
+    runtime.execute('bundler install')
 
 
-### To use precompiled binaries 
+
+```
 
 
 ### To bundle binaries with LambdaCode
 
+TBD. Pull requests are appreciated. 
 
 ## Requirements
 
@@ -83,28 +137,18 @@ To build your own binaries you'll need
  - default subnets wtih MapPublicIpOnLaunch=True set - this is how public
    subnets are discovered
 
-2. 
-[OpenSSL] problems are 2nd reason I did not go with 
-existing solutions - as `openssl` version in current
-lambda environment is 1.0.1 - [php-serverless](https://github.com/ZeroSharp/serverless-php/issues/8)
-has similar issues. I got this error when trying to download 
-git repository over https within ruby code running on lambda. 
-This repository/package resolves this by compiling OpenSSL 1.1.0
-altogether with Ruby (that is - compiling Ruby against compiled OpenSSL
-on same AMI). This results in large package unfortunately. 
 
-3. 
-Ruby runtimes are being downloaded during lambda invocation, rather 
-than being bundled with lambda (which is also possible). This makes build-deploy-test
-cycle much faster, and avoids bloated lambda code zip file. 
+## How it works
 
-
-## How
+Currently, binaries are created during boot time of ec2 instance. Orchestartion 
+of running this instance, waiting for compile completion etc, and removal of created
+resources is done through raw API calls. There is idea/plan to move this to cloudformation
+using troposhpere library. 
 
 ### Build time
 
 At build time, an instance is spinned up in `us-east-1` from
-Lambda base AMI ()
+Lambda base AMI (`ami-4fffc834`)
 
 ### Run time
 
